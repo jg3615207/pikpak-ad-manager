@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  pikpak-ad-manager:
+    build: .
+    container_name: pikpak-ad-manager
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - TZ=Asia/Shanghai
+      # You can override environment variables here if needed
+      # - POLL_INTERVAL=300
+    volumes:
+      # Map a local folder to /config to persist your DB, Settings, and Rules (ads.json)
+      - ./config:/config
+      
+      # Map your NAS WebDAV folder (or wherever your files are) to /data
+      # CHANGE the path on the left to your actual path!
+      - /path/to/your/nas/mount:/data

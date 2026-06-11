@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PikPak Ad Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="width: 32px; height: 32px; border-radius: 8px;">
+                <h2>Ad Manager</h2>
+            </div>
+            <nav>
+                <button class="nav-btn active" data-target="dashboard">Dashboard</button>
+                <button class="nav-btn" data-target="detection">Smart Detection <span id="nav-pending-badge" class="badge">0</span></button>
+                <button class="nav-btn" data-target="rules">Rules</button>
+                <button class="nav-btn" data-target="settings">Settings</button>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard View -->
+            <section id="dashboard" class="view active">
+                <header>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <h1>Dashboard</h1>
+                        <div class="status-badge" id="app-status">Idle</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="forceScan()">Force Full Scan</button>
+                </header>
+                
+                <div class="cards-grid">
+                    <div class="glass-card stat-card">
+                        <h3>Scans Completed</h3>
+                        <div class="stat-value" id="stat-scans">0</div>
+                    </div>
+                    <div class="glass-card stat-card">
+                        <h3>Items Deleted</h3>
+                        <div class="stat-value" id="stat-deleted">0</div>
+                    </div>
+                    <div class="glass-card stat-card">
+                        <h3>Pending Review</h3>
+                        <div class="stat-value" id="stat-pending">0</div>
+                    </div>
+                </div>
+
+                <div class="glass-card log-section">
+                    <div class="card-header">
+                        <h2>Recent Activity</h2>
+                        <button class="btn btn-secondary btn-small" onclick="fetchLogs()">Refresh</button>
+                    </div>
+                    <div class="terminal" id="log-output">
+                        Loading logs...
+                    </div>
+                </div>
+            </section>
+
+            <!-- Smart Detection View -->
+            <section id="detection" class="view">
+                <header>
+                    <h1>Smart Detection</h1>
+                </header>
+                <div class="cards-grid" style="grid-template-columns: 1fr; gap: 32px;">
+                    <!-- Pending Review -->
+                    <div class="glass-card" style="padding: 24px;">
+                        <div class="card-header">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <h2 style="margin: 0;">Review Queue</h2>
+                                <label class="switch" style="transform: scale(0.8); margin: 0;">
+                                    <input type="checkbox" id="low-confidence-toggle" onchange="fetchReviews(); fetchStatus();">
+                                    <span class="slider round"></span>
+                                </label>
+                                <span style="font-size: 13px; color: var(--text-muted);">Show 75%-84% matches</span>
+                            </div>
+                            <button class="btn btn-secondary btn-small" onclick="fetchReviews()">Refresh</button>
+                        </div>
+                        <p style="color: var(--text-muted); margin-bottom: 16px;">Files that vaguely match known ad rules. Confirm if they are ads, or reject to mark as safe.</p>
+                        <div class="rules-list" id="review-list">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Custom Search -->
+                    <div class="glass-card" style="padding: 24px;">
+                        <div class="card-header">
+                            <h2>Manual File Search</h2>
+                        </div>
+                        <p style="color: var(--text-muted); margin-bottom: 16px;">Run a Regex search across your target directory to find hidden ads.</p>
+                        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                            <input type="text" id="search-input" class="form-input" placeholder="e.g. .*三國.*\.mp4" style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: white;">
+                            <button class="btn btn-primary" onclick="runSearch()">Search</button>
+                        </div>
+                        <div class="rules-list" id="search-results">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Rules View -->
+            <section id="rules" class="view">
+                <header>
+                    <h1>Ad Rules</h1>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-secondary" onclick="showBulkAddModal()">+ Bulk Add</button>
+                        <button class="btn btn-primary" onclick="showAddRuleModal()">+ Add Rule</button>
+                    </div>
+                </header>
+                <div class="glass-card rules-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-cat="videos">Videos</button>
+                        <button class="tab-btn" data-cat="images">Images</button>
+                        <button class="tab-btn" data-cat="folders">Folders</button>
+                        <button class="tab-btn" data-cat="others">Others</button>
+                        <button class="tab-btn" style="color: var(--warning);" data-cat="excludes">Excludes</button>
+                    </div>
+                    <div class="rules-list" id="rules-list">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section id="settings" class="view">
+                <header>
+                    <h1>Settings</h1>
+                </header>
+                <div class="glass-card settings-container">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h3>Target Directory</h3>
+                            <p>The path that the scanner will monitor for ad files.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="target-dir-input" class="form-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; color: white; width: 300px;">
+                            <button class="btn btn-primary" onclick="updateTargetDir()">Save Map</button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h3>Rules File Path</h3>
+                            <p>The path to your structured JSON rules file.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="rules-path-input" class="form-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; color: white; width: 300px;">
+                            <button class="btn btn-primary" onclick="updateRulesPath()">Load Rules</button>
+                            <a href="/api/rules/download" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; height: 35px; box-sizing: border-box;">Download</a>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h3>Dry Run Mode</h3>
+                            <p>When enabled, files are only logged, not actually deleted.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="dry-run-toggle" onchange="toggleDryRun(this)">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="add-rule-modal" class="modal">
+        <div class="modal-content glass-card">
+            <h2>Add New Rule</h2>
+            <div class="form-group">
+                <label>Category</label>
+                <select id="new-rule-category">
+                    <option value="videos">Videos</option>
+                    <option value="images">Images</option>
+                    <option value="folders">Folders</option>
+                    <option value="others">Others</option>
+                    <option value="excludes">Excludes (Safe List)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Exact Name</label>
+                <input type="text" id="new-rule-name" placeholder="e.g. ad_video.mp4">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addRule()">Add Rule</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="bulk-add-modal" class="modal">
+        <div class="modal-content glass-card" style="width: 600px;">
+            <h2>Bulk Add Rules</h2>
+            <p style="color: var(--text-muted); font-size: 14px;">Paste file or folder names below (one per line). They will be automatically sorted into categories based on their extensions.</p>
+            <div class="form-group">
+                <textarea id="bulk-rules-input" rows="10" placeholder="paste names here..." style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: white; width: 100%; font-family: monospace; resize: vertical;"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeBulkAddModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="bulkAddRules()">Auto-Sort & Add</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // JS Logic
+        let currentRules = {};
+        let activeCategory = 'videos';
+
+        // Navigation
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+                
+                // If clicked on span inside button
+                const targetBtn = e.target.closest('.nav-btn');
+                targetBtn.classList.add('active');
+                
+                const targetId = targetBtn.dataset.target;
+                document.getElementById(targetId).classList.add('active');
+                
+                if(targetId === 'rules') fetchRules();
+                if(targetId === 'detection') fetchReviews();
+            });
+        });
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                activeCategory = e.target.dataset.cat;
+                renderRulesList();
+            });
+        });
+
+        // API Calls
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                document.getElementById('app-status').textContent = data.status;
+                document.getElementById('app-status').className = `status-badge ${data.status.toLowerCase()}`;
+                document.getElementById('stat-scans').textContent = data.scans_completed;
+                document.getElementById('stat-deleted').textContent = data.items_deleted;
+                const showLow = document.getElementById('low-confidence-toggle')?.checked;
+                const displayCount = showLow ? data.pending_count : data.pending_high_count;
+
+                document.getElementById('stat-pending').textContent = displayCount;
+                
+                const badge = document.getElementById('nav-pending-badge');
+                if (displayCount > 0) {
+                    badge.textContent = displayCount;
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+                document.getElementById('dry-run-toggle').checked = data.dry_run;
+                
+                // Only update inputs if they don't have focus
+                const dirInput = document.getElementById('target-dir-input');
+                if (document.activeElement !== dirInput) {
+                    dirInput.value = data.target_dir;
+                }
+                const rulesInput = document.getElementById('rules-path-input');
+                if (document.activeElement !== rulesInput) {
+                    rulesInput.value = data.rules_path;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function updateTargetDir() {
+            const newDir = document.getElementById('target-dir-input').value.trim();
+            if(!newDir) return;
+            try {
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({target_dir: newDir})
+                });
+                alert("Target directory mapped successfully!");
+            } catch (e) {
+                console.error(e);
+                alert("Failed to update target directory.");
+            }
+        }
+
+        async function updateRulesPath() {
+            const newPath = document.getElementById('rules-path-input').value.trim();
+            if(!newPath) return;
+            try {
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({rules_path: newPath})
+                });
+                alert("Rules file loaded successfully!");
+                fetchRules(); 
+            } catch (e) {
+                console.error(e);
+                alert("Failed to load rules file.");
+            }
+        }
+
+        async function forceScan() {
+            try {
+                await fetch('/api/scan/force', { method: 'POST' });
+                alert("Full scan triggered! It may take a few seconds to start.");
+                fetchStatus();
+            } catch (e) {
+                console.error(e);
+                alert("Failed to trigger scan.");
+            }
+        }
+
+        async function fetchLogs() {
+            try {
+                const res = await fetch('/api/logs');
+                const data = await res.json();
+                const logContainer = document.getElementById('log-output');
+                logContainer.innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
+                logContainer.scrollTop = logContainer.scrollHeight;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function fetchRules() {
+            try {
+                const res = await fetch('/api/rules');
+                currentRules = await res.json();
+                renderRulesList();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function renderRulesList() {
+            const list = document.getElementById('rules-list');
+            list.innerHTML = '';
+            const items = currentRules[activeCategory] || [];
+            
+            items.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'rule-item';
+                div.innerHTML = `
+                    <span>${item}</span>
+                    <button class="btn-icon" onclick="removeRule('${activeCategory}', ${index})">×</button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        async function removeRule(category, index) {
+            currentRules[category].splice(index, 1);
+            await saveRules();
+        }
+
+        function showAddRuleModal() {
+            document.getElementById('add-rule-modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('add-rule-modal').style.display = 'none';
+            document.getElementById('new-rule-name').value = '';
+        }
+
+        async function addRule() {
+            const cat = document.getElementById('new-rule-category').value;
+            const name = document.getElementById('new-rule-name').value.trim();
+            if(!name) return;
+
+            if(!currentRules[cat]) currentRules[cat] = [];
+            currentRules[cat].unshift(name);
+            await saveRules();
+            closeModal();
+            if(activeCategory === cat) renderRulesList();
+        }
+
+        function showBulkAddModal() {
+            document.getElementById('bulk-add-modal').style.display = 'flex';
+        }
+
+        function closeBulkAddModal() {
+            document.getElementById('bulk-add-modal').style.display = 'none';
+            document.getElementById('bulk-rules-input').value = '';
+        }
+
+        async function bulkAddRules() {
+            const text = document.getElementById('bulk-rules-input').value;
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+            if(lines.length === 0) return;
+
+            ['videos', 'images', 'folders', 'others', 'excludes'].forEach(cat => {
+                if(!currentRules[cat]) currentRules[cat] = [];
+            });
+
+            if (activeCategory === 'excludes') {
+                lines.forEach(name => currentRules.excludes.unshift(name));
+            } else {
+                lines.forEach(name => {
+                    if(name.match(/\.(mp4|mkv|avi|wmv|mov|flv|webm|ts|rmvb)$/i)) {
+                        currentRules.videos.unshift(name);
+                    } else if(name.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) {
+                        currentRules.images.unshift(name);
+                    } else if(!name.includes('.')) {
+                        currentRules.folders.unshift(name);
+                    } else {
+                        currentRules.others.unshift(name);
+                    }
+                });
+            }
+
+            await saveRules();
+            closeBulkAddModal();
+            renderRulesList();
+            alert(`Processed and added ${lines.length} items!`);
+        }
+
+        async function saveRules() {
+            try {
+                await fetch('/api/rules', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(currentRules)
+                });
+                await fetchRules();
+                fetchStatus();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function toggleDryRun(cb) {
+            try {
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({dry_run: cb.checked})
+                });
+            } catch (e) {
+                console.error(e);
+                cb.checked = !cb.checked; // Revert on fail
+            }
+        }
+
+        // Smart Detection Logic
+        async function fetchReviews() {
+            try {
+                const res = await fetch('/api/review');
+                const data = await res.json();
+                const list = document.getElementById('review-list');
+                list.innerHTML = '';
+                
+                const showLow = document.getElementById('low-confidence-toggle')?.checked;
+                const filteredData = data.filter(item => {
+                    if (showLow) return true;
+                    return item.similarity >= 0.85;
+                });
+                
+                if(filteredData.length === 0) {
+                    list.innerHTML = '<div style="padding:16px; color:var(--text-muted);">No pending reviews!</div>';
+                }
+                filteredData.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'rule-item';
+                    div.innerHTML = `
+                        <div style="flex:1;">
+                            <div style="font-weight: 500;">${item.name}</div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; word-break: break-all;">${item.path}</div>
+                            <div style="font-size: 12px; color: var(--warning); margin-top: 4px;">Similarity: ${(item.similarity*100).toFixed(0)}% to "${item.matched_rule}"</div>
+                        </div>
+                        <div style="display:flex; gap: 8px; flex-direction: column;">
+                            <button class="btn btn-secondary btn-small" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'reject')">Mark Safe</button>
+                            <button class="btn btn-primary btn-small" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'add_rule_only', '${item.name.replace(/'/g, "\\'")}')">Add to Rule</button>
+                            <button class="btn btn-small" style="background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'approve', '${item.name.replace(/'/g, "\\'")}')">Delete & Add Rule</button>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function resolveReview(path, action, name=null) {
+            try {
+                await fetch('/api/review/resolve', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path, action, name})
+                });
+                fetchReviews();
+                fetchStatus();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function runSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            if(!query) return;
+            const resContainer = document.getElementById('search-results');
+            resContainer.innerHTML = '<div style="padding:16px;">Searching...</div>';
+            
+            try {
+                const res = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({query})
+                });
+                if(!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                
+                resContainer.innerHTML = '';
+                if(data.length === 0) {
+                    resContainer.innerHTML = '<div style="padding:16px; color:var(--text-muted);">No results found.</div>';
+                }
+                data.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'rule-item';
+                    div.innerHTML = `
+                        <div style="flex:1;">
+                            <div style="font-weight: 500;">${item.name}</div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; word-break: break-all;">${item.path}</div>
+                        </div>
+                        <div style="display:flex; gap: 8px; flex-direction: column;">
+                            <button class="btn btn-primary btn-small" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'add_rule_only', '${item.name.replace(/'/g, "\\'")}')">Add to Rule</button>
+                            <button class="btn btn-small" style="background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'approve', '${item.name.replace(/'/g, "\\'")}')">Delete & Add Rule</button>
+                        </div>
+                    `;
+                    resContainer.appendChild(div);
+                });
+            } catch(e) {
+                resContainer.innerHTML = `<div style="padding:16px; color:var(--danger);">Error: ${e.message}</div>`;
+            }
+        }
+
+        // Init
+        fetchStatus();
+        fetchLogs();
+        setInterval(() => {
+            fetchStatus();
+            if(document.getElementById('dashboard').classList.contains('active')) fetchLogs();
+            if(document.getElementById('detection').classList.contains('active')) fetchReviews();
+        }, 5000);
+    </script>
+</body>
+</html>
