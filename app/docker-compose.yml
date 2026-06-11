@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   pikpak-ad-manager:
-    build: .
+    image: jg3615207/pikpak-ad-manager:latest
     container_name: pikpak-ad-manager
     restart: unless-stopped
     ports:
