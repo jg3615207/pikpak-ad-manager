@@ -41,6 +41,7 @@ DB_PATH = os.path.join(CONFIG_DIR, "scanner.db")
 SETTINGS_PATH = os.path.join(CONFIG_DIR, "settings.json")
 RULES_PATH = os.path.join(CONFIG_DIR, "ads.json")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", 300))
+FULL_SCAN_INTERVAL = int(os.environ.get("FULL_SCAN_INTERVAL", 24))
 DRY_RUN = os.environ.get("DRY_RUN", "True").lower() in ("true", "1", "yes")
 
 try:
@@ -49,13 +50,15 @@ try:
         if "target_dir" in _settings: TARGET_DIR = _settings["target_dir"]
         if "dry_run" in _settings: DRY_RUN = _settings["dry_run"]
         if "rules_path" in _settings: RULES_PATH = _settings["rules_path"]
+        if "poll_interval" in _settings: POLL_INTERVAL = int(_settings["poll_interval"])
+        if "full_scan_interval" in _settings: FULL_SCAN_INTERVAL = int(_settings["full_scan_interval"])
 except Exception:
     pass
 
 def save_settings():
     try:
         with open(SETTINGS_PATH, 'w') as f:
-            json.dump({"target_dir": TARGET_DIR, "dry_run": DRY_RUN, "rules_path": RULES_PATH}, f)
+            json.dump({"target_dir": TARGET_DIR, "dry_run": DRY_RUN, "rules_path": RULES_PATH, "poll_interval": POLL_INTERVAL, "full_scan_interval": FULL_SCAN_INTERVAL}, f)
     except Exception as e:
         logger.error(f"Error saving settings: {e}")
 
@@ -85,6 +88,7 @@ class AdManager:
         self.db = None
         self.scan_event = threading.Event()
         self.force_full_scan_next = False
+        self.last_full_scan_time = time.time()
         self.init_db()
         self.load_rules()
 
@@ -245,6 +249,10 @@ class AdManager:
         while True:
             self.status = "Scanning"
             if os.path.exists(TARGET_DIR):
+                if time.time() - self.last_full_scan_time >= FULL_SCAN_INTERVAL * 3600:
+                    self.force_full_scan_next = True
+                    self.last_full_scan_time = time.time()
+
                 if self.force_full_scan_next:
                     logger.info("Forcing full scan! Clearing folder cache...")
                     self.db.execute("DELETE FROM scanned_folders")
@@ -288,7 +296,9 @@ def get_status():
         "pending_high_count": pending_high_count,
         "dry_run": DRY_RUN,
         "target_dir": TARGET_DIR,
-        "rules_path": RULES_PATH
+        "rules_path": RULES_PATH,
+        "poll_interval": POLL_INTERVAL,
+        "full_scan_interval": FULL_SCAN_INTERVAL
     })
 
 @app.route('/api/logs', methods=['GET'])
@@ -332,7 +342,7 @@ def force_scan():
 
 @app.route('/api/settings', methods=['POST'])
 def update_settings():
-    global DRY_RUN, TARGET_DIR, RULES_PATH
+    global DRY_RUN, TARGET_DIR, RULES_PATH, POLL_INTERVAL, FULL_SCAN_INTERVAL
     data = request.json
     if 'dry_run' in data:
         DRY_RUN = data['dry_run']
@@ -344,6 +354,13 @@ def update_settings():
         RULES_PATH = data['rules_path']
         logger.info(f"Rules Path changed to: {RULES_PATH}")
         manager.load_rules()
+    if 'poll_interval' in data:
+        POLL_INTERVAL = int(data['poll_interval'])
+        logger.info(f"Poll Interval changed to: {POLL_INTERVAL}s")
+        manager.scan_event.set()
+    if 'full_scan_interval' in data:
+        FULL_SCAN_INTERVAL = int(data['full_scan_interval'])
+        logger.info(f"Full Scan Interval changed to: {FULL_SCAN_INTERVAL}h")
     save_settings()
     return jsonify({"success": True})
 

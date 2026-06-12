@@ -164,6 +164,26 @@
                             <span class="slider round"></span>
                         </label>
                     </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h3>Scan Wait Duration (seconds)</h3>
+                            <p>How long to wait between checking for new files.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="number" id="poll-interval-input" class="form-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; color: white; width: 100px;" min="10">
+                            <button class="btn btn-primary" onclick="updatePollInterval()">Save</button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h3>Full Scan Interval (hours)</h3>
+                            <p>How often to automatically force a full deep scan.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="number" id="full-scan-interval-input" class="form-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; color: white; width: 100px;" min="1">
+                            <button class="btn btn-primary" onclick="updateFullScanInterval()">Save</button>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>
@@ -271,6 +291,14 @@
                 const rulesInput = document.getElementById('rules-path-input');
                 if (document.activeElement !== rulesInput) {
                     rulesInput.value = data.rules_path;
+                }
+                const pollInput = document.getElementById('poll-interval-input');
+                if (document.activeElement !== pollInput) {
+                    pollInput.value = data.poll_interval;
+                }
+                const fullScanInput = document.getElementById('full-scan-interval-input');
+                if (document.activeElement !== fullScanInput) {
+                    fullScanInput.value = data.full_scan_interval;
                 }
             } catch (e) {
                 console.error(e);
