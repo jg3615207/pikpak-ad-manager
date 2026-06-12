@@ -32,6 +32,7 @@
                     <div style="display: flex; align-items: center; gap: 16px;">
                         <h1>Dashboard</h1>
                         <div class="status-badge" id="app-status">Idle</div>
+                        <div id="next-run-info" style="font-size: 12px; margin-left: 10px; color: var(--text-muted); display: none;">Next scan in: <span id="next-run-timer" style="color: white; font-family: monospace;">--</span></div>
                     </div>
                     <button class="btn btn-primary" onclick="forceScan()">Force Full Scan</button>
                 </header>
@@ -267,6 +268,29 @@
                 const data = await res.json();
                 document.getElementById('app-status').textContent = data.status;
                 document.getElementById('app-status').className = `status-badge ${data.status.toLowerCase()}`;
+                
+                if (data.status === 'Idle' && data.last_scan_end_time > 0) {
+                    const nextRunTime = data.last_scan_end_time + data.poll_interval;
+                    document.getElementById('next-run-info').style.display = 'block';
+                    
+                    if (window.nextRunInterval) clearInterval(window.nextRunInterval);
+                    window.nextRunInterval = setInterval(() => {
+                        const now = Date.now() / 1000;
+                        const remaining = Math.max(0, Math.floor(nextRunTime - now));
+                        if (remaining > 0) {
+                            const m = Math.floor(remaining / 60);
+                            const s = remaining % 60;
+                            document.getElementById('next-run-timer').textContent = `${m}m ${s}s`;
+                        } else {
+                            document.getElementById('next-run-timer').textContent = "Starting soon...";
+                            clearInterval(window.nextRunInterval);
+                        }
+                    }, 1000);
+                } else {
+                    document.getElementById('next-run-info').style.display = 'none';
+                    if (window.nextRunInterval) clearInterval(window.nextRunInterval);
+                }
+
                 document.getElementById('stat-scans').textContent = data.scans_completed;
                 document.getElementById('stat-deleted').textContent = data.items_deleted;
                 const showLow = document.getElementById('low-confidence-toggle')?.checked;
