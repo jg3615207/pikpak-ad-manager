@@ -198,9 +198,9 @@ class AdManager:
             dir_stat = os.stat(current_dir)
             current_mtime = dir_stat.st_mtime
             last_mtime = self.get_last_mtime(current_dir)
-            if last_mtime >= current_mtime and last_mtime != -1:
-                pass 
-            else:
+            dir_unchanged = (last_mtime >= current_mtime and last_mtime != -1)
+            
+            if not dir_unchanged:
                 logger.debug(f"Scanning changed folder: {current_dir}")
 
             with os.scandir(current_dir) as entries:
@@ -215,19 +215,22 @@ class AdManager:
                     if is_excluded:
                         continue
 
-                    status, rule, score = self.evaluate_file(entry.path, entry.name, entry.is_dir(follow_symlinks=False))
+                    is_dir = entry.is_dir(follow_symlinks=False)
                     
-                    if status == "EXACT":
-                        self.delete_item(entry.path, entry.is_dir())
-                        continue 
-                    elif status == "FUZZY":
-                        logger.info(f"Suspicious file flagged: {entry.name} (Matches: {rule} @ {score:.2f})")
-                        cursor = self.db.cursor()
-                        cursor.execute("INSERT OR IGNORE INTO pending_review (path, matched_rule, similarity, name) VALUES (?, ?, ?, ?)", 
-                                       (entry.path, rule, score, entry.name))
-                        self.db.commit()
+                    if not dir_unchanged:
+                        status, rule, score = self.evaluate_file(entry.path, entry.name, is_dir)
+                        
+                        if status == "EXACT":
+                            self.delete_item(entry.path, is_dir)
+                            continue 
+                        elif status == "FUZZY":
+                            logger.info(f"Suspicious file flagged: {entry.name} (Matches: {rule} @ {score:.2f})")
+                            cursor = self.db.cursor()
+                            cursor.execute("INSERT OR IGNORE INTO pending_review (path, matched_rule, similarity, name) VALUES (?, ?, ?, ?)", 
+                                           (entry.path, rule, score, entry.name))
+                            self.db.commit()
 
-                    if entry.is_dir(follow_symlinks=False):
+                    if is_dir:
                         self.scan_directory(entry.path)
             
             self.update_mtime(current_dir, current_mtime)
