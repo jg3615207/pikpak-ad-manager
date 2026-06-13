@@ -20,6 +20,7 @@
                 <button class="nav-btn active" data-target="dashboard">Dashboard</button>
                 <button class="nav-btn" data-target="detection">Smart Detection <span id="nav-pending-badge" class="badge">0</span></button>
                 <button class="nav-btn" data-target="rules">Rules</button>
+                <button class="nav-btn" data-target="ignore-list">Ignore List</button>
                 <button class="nav-btn" data-target="settings">Settings</button>
             </nav>
         </aside>
@@ -124,6 +125,19 @@
                     </div>
                     <div class="rules-list" id="rules-list">
                         <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Ignore List View -->
+            <section id="ignore-list" class="view">
+                <header>
+                    <h1>Ignore List</h1>
+                    <p style="color: var(--text-muted); margin-top: 8px;">Exact file or folder paths that the scanner completely ignores.</p>
+                </header>
+                <div class="glass-card">
+                    <div id="ignore-list-container" class="rules-list">
+                        Loading...
                     </div>
                 </div>
             </section>
@@ -249,6 +263,7 @@
                 
                 if(targetId === 'rules') fetchRules();
                 if(targetId === 'detection') fetchReviews();
+                if(targetId === 'ignore-list') fetchIgnored();
             });
         });
 
@@ -531,7 +546,7 @@
                             <div style="font-size: 12px; color: var(--warning); margin-top: 4px;">Similarity: ${(item.similarity*100).toFixed(0)}% to "${item.matched_rule}"</div>
                         </div>
                         <div style="display:flex; gap: 8px; flex-direction: column;">
-                            <button class="btn btn-secondary btn-small" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'reject')">Mark Safe</button>
+                            <button class="btn btn-secondary btn-small" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'reject')">Ignore Path</button>
                             <button class="btn btn-primary btn-small" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'add_rule_only', '${item.name.replace(/'/g, "\\'")}')">Add to Rule</button>
                             <button class="btn btn-small" style="background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;" onclick="resolveReview('${item.path.replace(/\\/g, '\\\\')}', 'approve', '${item.name.replace(/'/g, "\\'")}')">Delete & Add Rule</button>
                         </div>
@@ -552,6 +567,45 @@
                 });
                 fetchReviews();
                 fetchStatus();
+                if (action === 'reject') fetchIgnored();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function fetchIgnored() {
+            try {
+                const res = await fetch('/api/ignored');
+                const data = await res.json();
+                const list = document.getElementById('ignore-list-container');
+                list.innerHTML = '';
+                
+                if(data.length === 0) {
+                    list.innerHTML = '<div style="padding:16px; color:var(--text-muted);">Ignore list is empty.</div>';
+                }
+                
+                data.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'rule-item';
+                    div.innerHTML = `
+                        <span style="word-break: break-all; font-size: 13px;">${item.path}</span>
+                        <button class="btn-icon" onclick="removeIgnored('${item.path.replace(/\\/g, '\\\\')}')">×</button>
+                    `;
+                    list.appendChild(div);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function removeIgnored(path) {
+            try {
+                await fetch('/api/ignored/remove', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path})
+                });
+                fetchIgnored();
             } catch (e) {
                 console.error(e);
             }
@@ -599,6 +653,10 @@
         // Init
         fetchStatus();
         fetchLogs();
+        fetchRules();
+        fetchReviews();
+        fetchIgnored();
+        
         setInterval(() => {
             fetchStatus();
             if(document.getElementById('dashboard').classList.contains('active')) fetchLogs();

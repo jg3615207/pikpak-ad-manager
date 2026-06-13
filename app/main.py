@@ -89,6 +89,7 @@ class AdManager:
         self.scan_event = threading.Event()
         self.force_full_scan_next = False
         self.last_full_scan_time = time.time()
+        self.last_scan_end_time = 0
         self.init_db()
         self.load_rules()
 
@@ -228,6 +229,15 @@ class AdManager:
                             self.delete_item(entry.path, is_dir)
                             continue 
                         elif status == "FUZZY":
+                            if score >= 0.95:
+                                cat = 'folders' if is_dir else ('videos' if entry.name.lower().endswith(('.mp4','.mkv','.avi','.wmv','.mov','.flv','.webm','.ts','.rmvb')) else 'images' if entry.name.lower().endswith(('.jpg','.jpeg','.png','.gif','.webp','.bmp')) else 'others')
+                                if cat not in self.raw_rules: self.raw_rules[cat] = []
+                                self.raw_rules[cat].insert(0, entry.name)
+                                self.save_rules(self.raw_rules)
+                                logger.info(f"Auto-added rule for {entry.name} (Similarity: {(score*100):.0f}% >= 95%)")
+                                self.delete_item(entry.path, is_dir)
+                                continue
+
                             logger.info(f"Suspicious file flagged: {entry.name} (Matches: {rule} @ {score:.2f})")
                             cursor = self.db.cursor()
                             cursor.execute("INSERT OR IGNORE INTO pending_review (path, matched_rule, similarity, name) VALUES (?, ?, ?, ?)", 
@@ -262,9 +272,11 @@ class AdManager:
                 start_time = time.time()
                 self.scan_directory(TARGET_DIR)
                 self.scans_completed += 1
+                self.last_scan_end_time = time.time()
                 logger.info(f"Scan completed in {time.time() - start_time:.2f}s.")
             else:
                 logger.warning(f"Target directory {TARGET_DIR} not found.")
+                self.last_scan_end_time = time.time()
             
             self.status = "Idle"
             self.scan_event.clear()
@@ -298,7 +310,8 @@ def get_status():
         "target_dir": TARGET_DIR,
         "rules_path": RULES_PATH,
         "poll_interval": POLL_INTERVAL,
-        "full_scan_interval": FULL_SCAN_INTERVAL
+        "full_scan_interval": FULL_SCAN_INTERVAL,
+        "last_scan_end_time": manager.last_scan_end_time
     })
 
 @app.route('/api/logs', methods=['GET'])
@@ -339,6 +352,25 @@ def force_scan():
     manager.force_full_scan_next = True
     manager.scan_event.set()
     return jsonify({"success": True})
+
+@app.route('/api/scan/quick', methods=['POST'])
+def quick_scan():
+    # Remember the number of items deleted and scans completed before the scan
+    initial_deleted = manager.items_deleted
+    initial_scans = manager.scans_completed
+    
+    # Trigger the scan
+    manager.scan_event.set()
+    
+    # Wait for the scan loop to finish the next scan
+    while manager.scans_completed == initial_scans:
+        time.sleep(0.5)
+        
+    newly_deleted = manager.items_deleted - initial_deleted
+    return jsonify({
+        "success": True,
+        "message": f"Quick scan completed. Removed {newly_deleted} ad items."
+    })
 
 @app.route('/api/settings', methods=['POST'])
 def update_settings():
@@ -435,7 +467,23 @@ def search_files():
         
     return jsonify(results)
 
-if __name__ == "__main__":
+@app.route('/api/ignored', methods=['GET'])
+def get_ignored():
+    cursor = manager.db.cursor()
+    cursor.execute("SELECT path FROM known_safe ORDER BY path")
+    items = [{"path": row[0]} for row in cursor.fetchall()]
+    return jsonify(items)
+
+@app.route('/api/ignored/remove', methods=['POST'])
+def remove_ignored():
+    data = request.json
+    path = data.get('path')
+    cursor = manager.db.cursor()
+    cursor.execute("DELETE FROM known_safe WHERE path = ?", (path,))
+    manager.db.commit()
+    return jsonify({"success": True})
+
+if __name__ == '__main__':
     scanner_thread = threading.Thread(target=manager.run, daemon=True)
     scanner_thread.start()
     app.run(host='0.0.0.0', port=5000)
