@@ -368,22 +368,13 @@ def force_scan():
     return jsonify({"success": True})
 
 @app.route('/api/scan/quick', methods=['POST'])
+@app.route('/api/scan/quick/', methods=['POST'])
 def quick_scan():
-    # Remember the number of items deleted and scans completed before the scan
-    initial_deleted = manager.items_deleted
-    initial_scans = manager.scans_completed
-    
-    # Trigger the scan
+    # Trigger the scan in the background
     manager.scan_event.set()
-    
-    # Wait for the scan loop to finish the next scan
-    while manager.scans_completed == initial_scans:
-        time.sleep(0.5)
-        
-    newly_deleted = manager.items_deleted - initial_deleted
     return jsonify({
         "success": True,
-        "message": f"Quick scan completed. Removed {newly_deleted} ad items."
+        "message": "Quick scan started in the background. Please poll /api/status to check when 'status' returns to 'Idle'."
     })
 
 @app.route('/api/settings', methods=['POST'])
