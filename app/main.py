@@ -42,6 +42,7 @@ SETTINGS_PATH = os.path.join(CONFIG_DIR, "settings.json")
 RULES_PATH = os.path.join(CONFIG_DIR, "ads.json")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", 300))
 FULL_SCAN_INTERVAL = int(os.environ.get("FULL_SCAN_INTERVAL", 24))
+FULL_SCAN_INTERVAL_UNIT = os.environ.get("FULL_SCAN_INTERVAL_UNIT", "hours")
 DRY_RUN = os.environ.get("DRY_RUN", "True").lower() in ("true", "1", "yes")
 
 try:
@@ -52,13 +53,21 @@ try:
         if "rules_path" in _settings: RULES_PATH = _settings["rules_path"]
         if "poll_interval" in _settings: POLL_INTERVAL = int(_settings["poll_interval"])
         if "full_scan_interval" in _settings: FULL_SCAN_INTERVAL = int(_settings["full_scan_interval"])
+        if "full_scan_interval_unit" in _settings: FULL_SCAN_INTERVAL_UNIT = _settings["full_scan_interval_unit"]
 except Exception:
     pass
 
 def save_settings():
     try:
         with open(SETTINGS_PATH, 'w') as f:
-            json.dump({"target_dir": TARGET_DIR, "dry_run": DRY_RUN, "rules_path": RULES_PATH, "poll_interval": POLL_INTERVAL, "full_scan_interval": FULL_SCAN_INTERVAL}, f)
+            json.dump({
+                "target_dir": TARGET_DIR, 
+                "dry_run": DRY_RUN, 
+                "rules_path": RULES_PATH, 
+                "poll_interval": POLL_INTERVAL, 
+                "full_scan_interval": FULL_SCAN_INTERVAL,
+                "full_scan_interval_unit": FULL_SCAN_INTERVAL_UNIT
+            }, f)
     except Exception as e:
         logger.error(f"Error saving settings: {e}")
 
@@ -259,7 +268,11 @@ class AdManager:
         while True:
             self.status = "Scanning"
             if os.path.exists(TARGET_DIR):
-                if time.time() - self.last_full_scan_time >= FULL_SCAN_INTERVAL * 3600:
+                multiplier = 3600
+                if FULL_SCAN_INTERVAL_UNIT == 'days': multiplier = 86400
+                elif FULL_SCAN_INTERVAL_UNIT == 'months': multiplier = 86400 * 30
+                
+                if time.time() - self.last_full_scan_time >= FULL_SCAN_INTERVAL * multiplier:
                     self.force_full_scan_next = True
                     self.last_full_scan_time = time.time()
 
@@ -311,6 +324,7 @@ def get_status():
         "rules_path": RULES_PATH,
         "poll_interval": POLL_INTERVAL,
         "full_scan_interval": FULL_SCAN_INTERVAL,
+        "full_scan_interval_unit": FULL_SCAN_INTERVAL_UNIT,
         "last_scan_end_time": manager.last_scan_end_time
     })
 
@@ -374,7 +388,7 @@ def quick_scan():
 
 @app.route('/api/settings', methods=['POST'])
 def update_settings():
-    global DRY_RUN, TARGET_DIR, RULES_PATH, POLL_INTERVAL, FULL_SCAN_INTERVAL
+    global DRY_RUN, TARGET_DIR, RULES_PATH, POLL_INTERVAL, FULL_SCAN_INTERVAL, FULL_SCAN_INTERVAL_UNIT
     data = request.json
     if 'dry_run' in data:
         DRY_RUN = data['dry_run']
@@ -392,7 +406,10 @@ def update_settings():
         manager.scan_event.set()
     if 'full_scan_interval' in data:
         FULL_SCAN_INTERVAL = int(data['full_scan_interval'])
-        logger.info(f"Full Scan Interval changed to: {FULL_SCAN_INTERVAL}h")
+        logger.info(f"Full Scan Interval changed to: {FULL_SCAN_INTERVAL} {FULL_SCAN_INTERVAL_UNIT}")
+    if 'full_scan_interval_unit' in data:
+        FULL_SCAN_INTERVAL_UNIT = data['full_scan_interval_unit']
+        logger.info(f"Full Scan Interval Unit changed to: {FULL_SCAN_INTERVAL_UNIT}")
     save_settings()
     return jsonify({"success": True})
 

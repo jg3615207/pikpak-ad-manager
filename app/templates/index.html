@@ -191,11 +191,16 @@
                     </div>
                     <div class="setting-item">
                         <div class="setting-info">
-                            <h3>Full Scan Interval (hours)</h3>
+                            <h3>Full Scan Interval</h3>
                             <p>How often to automatically force a full deep scan.</p>
                         </div>
                         <div style="display: flex; gap: 8px;">
-                            <input type="number" id="full-scan-interval-input" class="form-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; color: white; width: 100px;" min="1">
+                            <input type="number" id="full-scan-interval-input" class="form-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; color: white; width: 80px;" min="1">
+                            <select id="full-scan-interval-unit-input" class="form-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; color: white;">
+                                <option value="hours">Hours</option>
+                                <option value="days">Days</option>
+                                <option value="months">Months</option>
+                            </select>
                             <button class="btn btn-primary" onclick="updateFullScanInterval()">Save</button>
                         </div>
                     </div>
@@ -336,8 +341,10 @@
                     pollInput.value = data.poll_interval;
                 }
                 const fullScanInput = document.getElementById('full-scan-interval-input');
-                if (document.activeElement !== fullScanInput) {
+                const fullScanUnitInput = document.getElementById('full-scan-interval-unit-input');
+                if (document.activeElement !== fullScanInput && document.activeElement !== fullScanUnitInput) {
                     fullScanInput.value = data.full_scan_interval;
+                    fullScanUnitInput.value = data.full_scan_interval_unit || 'hours';
                 }
             } catch (e) {
                 console.error(e);
@@ -357,6 +364,25 @@
             } catch (e) {
                 console.error(e);
                 alert("Failed to update target directory.");
+            }
+        }
+
+        async function updateFullScanInterval() {
+            const input = document.getElementById('full-scan-interval-input');
+            const unitInput = document.getElementById('full-scan-interval-unit-input');
+            try {
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        full_scan_interval: parseInt(input.value),
+                        full_scan_interval_unit: unitInput.value
+                    })
+                });
+                alert('Full scan interval saved!');
+                fetchStatus();
+            } catch (e) {
+                alert('Error updating full scan interval');
             }
         }
 
